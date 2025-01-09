@@ -4,10 +4,19 @@ const cors = require("cors");
 const { Server } = require("socket.io");
 const SocketIOFileUpload = require("socketio-file-upload");
 const path = require("path");
-require('dotenv').config()
+const fs = require("fs");
+require("dotenv").config();
+
 const PORT = 3001;
 const CORS_ORIGIN = "*";
 const BASE_URL = process.env.BASE_URL || "http://localhost:3001";
+
+// Ensure the uploads directory exists
+const uploadsDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true }); // Create the directory if it doesn't exist
+    console.log("Uploads directory created:", uploadsDir);
+}
 
 const users = {};
 const rooms = {};
@@ -15,7 +24,7 @@ const rooms = {};
 const app = express();
 app.use(cors());
 app.use(SocketIOFileUpload.router);
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use("/uploads", express.static(uploadsDir)); // Serve the uploads directory
 
 const server = http.createServer(app);
 
@@ -30,17 +39,17 @@ io.on("connection", (socket) => {
     console.log(`User Connected: ${socket.id}`);
 
     const uploader = new SocketIOFileUpload();
-    uploader.dir = "./uploads";
+    uploader.dir = uploadsDir; // Use the uploads directory
     uploader.listen(socket);
 
     uploader.on("saved", (event) => {
-        console.log("File saved:", event.file);
+        console.log("File saved:", event.file.name);
         const fileMessage = {
             room: event.file.meta.room,
             id: socket.id,
             author: event.file.meta.username,
             fileName: event.file.name,
-            filePath: `${BASE_URL}/${event.file.name}`,
+            filePath: `${BASE_URL}/uploads/${event.file.name}`,
             fileType: event.file.meta.type,
             time: new Date().toLocaleTimeString(),
         };
@@ -99,7 +108,7 @@ io.on("connection", (socket) => {
                 socket.to(room).emit("user_left", { username, id: socket.id });
                 delete users[username];
                 if (rooms[room]) {
-                    rooms[room] = rooms[room].filter(user => user.socketId !== socket.id);
+                    rooms[room] = rooms[room].filter((user) => user.socketId !== socket.id);
                     io.to(room).emit("update_users", rooms[room]);
                 }
                 break;
@@ -128,4 +137,3 @@ io.on("connection", (socket) => {
 server.listen(PORT, () => {
     console.log("SERVER RUNNING ON PORT", PORT);
 });
-
